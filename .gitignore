@@ -1,2 +1,8 @@
-/venv310
-/venv
+venv/
+venv310/
+__pycache__/
+*.pyc
+frontend/node_modules/
+*.wav
+*.mp3
+.env
