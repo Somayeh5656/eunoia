@@ -5,6 +5,7 @@ function App() {
   const [input, setInput] = useState('');
   const [ws, setWs] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [lastAudioUrl, setLastAudioUrl] = useState(null);
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
 
   useEffect(() => {
@@ -16,8 +17,8 @@ function App() {
       setWs(socket);
     };
 
-    socket.onclose = () => {
-      console.log('❌ WebSocket disconnected');
+    socket.onclose = (event) => {
+      console.log('❌ WebSocket disconnected', event.code, event.reason);
       setConnected(false);
     };
 
@@ -30,7 +31,12 @@ function App() {
       if (data.type === 'assistant_response') {
         setMessages(prev => [...prev, { sender: 'assistant', text: data.text }]);
         if (data.audio_url) {
-          new Audio(data.audio_url).play().catch(e => console.log('Audio play failed:', e));
+          // Build absolute URL
+          const fullAudioUrl = `http://86.50.20.198:8000${data.audio_url}`;
+          console.log('Audio URL:', fullAudioUrl);
+          setLastAudioUrl(fullAudioUrl);
+          // Attempt autoplay (may be blocked)
+          new Audio(fullAudioUrl).play().catch(e => console.log('Autoplay failed:', e));
         }
       }
     };
@@ -39,6 +45,7 @@ function App() {
   }, []);
 
   const sendMessage = () => {
+    console.log("Send button clicked. Input value:", input);
     if (!input.trim()) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       console.log('WebSocket not open');
@@ -51,6 +58,12 @@ function App() {
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') sendMessage();
+  };
+
+  const playLastAudio = () => {
+    if (lastAudioUrl) {
+      new Audio(lastAudioUrl).play().catch(e => console.log('Manual play failed:', e));
+    }
   };
 
   return (
@@ -76,6 +89,11 @@ function App() {
         />
         <button onClick={sendMessage} disabled={!connected} style={{ padding: '8px 16px' }}>
           Send
+        </button>
+      </div>
+      <div style={{ marginTop: '10px' }}>
+        <button onClick={playLastAudio} disabled={!lastAudioUrl}>
+          Play Last Audio
         </button>
       </div>
     </div>
