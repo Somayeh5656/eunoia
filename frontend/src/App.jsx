@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff } from 'lucide-react';  // import icons
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -6,6 +7,7 @@ function App() {
   const [ws, setWs] = useState(null);
   const [connected, setConnected] = useState(false);
   const [lastAudioUrl, setLastAudioUrl] = useState(null);
+  const [isListening, setIsListening] = useState(false); // new state
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
 
   useEffect(() => {
@@ -31,7 +33,6 @@ function App() {
       if (data.type === 'assistant_response') {
         setMessages(prev => [...prev, { sender: 'assistant', text: data.text }]);
         if (data.audio_url) {
-          // Build absolute URL
           const fullAudioUrl = `http://86.50.20.198:8000${data.audio_url}`;
           console.log('Audio URL:', fullAudioUrl);
           setLastAudioUrl(fullAudioUrl);
@@ -45,7 +46,6 @@ function App() {
   }, []);
 
   const sendMessage = () => {
-    console.log("Send button clicked. Input value:", input);
     if (!input.trim()) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       console.log('WebSocket not open');
@@ -66,6 +66,29 @@ function App() {
     }
   };
 
+  // New function for voice input
+  const handleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition not supported in this browser.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      // Optionally auto‑send (uncomment next line)
+      // sendMessage();
+    };
+    recognition.start();
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '600px', margin: 'auto' }}>
       <h1>Eunoia</h1>
@@ -80,6 +103,10 @@ function App() {
         ))}
       </div>
       <div style={{ display: 'flex', marginTop: '10px' }}>
+        {/* Microphone button */}
+        <button onClick={handleVoiceInput} disabled={!connected} style={{ marginRight: '8px', padding: '8px' }}>
+          {isListening ? <MicOff /> : <Mic />}
+        </button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}

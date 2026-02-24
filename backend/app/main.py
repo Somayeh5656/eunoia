@@ -5,6 +5,7 @@ import json
 import os
 import uuid
 from datetime import datetime
+from .emotion import detect_emotion
 
 from .llm_engine import LLMEngine
 from .tts_service import TTSService
@@ -45,7 +46,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             message = json.loads(data)
             if message["type"] == "user_message":
                 user_text = message["text"]
-                emotion = "neutral"  # placeholder
+                emotion = detect_emotion(user_text)
                 try:
                     reply = await llm.generate_response(user_text, emotion)
                 except Exception as e:
