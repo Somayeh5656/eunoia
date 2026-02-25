@@ -35,7 +35,7 @@ function App() {
     happy: 'delicious.wav',
     angry: 'angry.wav',
     surprised: 'surprised.wav',
-    neutral: 'neutral_uhumm.wav',
+    neutral: 'hm_thinking.wav',
   };
 
   const interestedSounds = ['interested1.wav', 'interested2.wav', 'interested3.wav', 'interested4.wav'];
