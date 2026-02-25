@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff } from 'lucide-react';  // import icons
+import { Mic, MicOff } from 'lucide-react';
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -7,8 +7,23 @@ function App() {
   const [ws, setWs] = useState(null);
   const [connected, setConnected] = useState(false);
   const [lastAudioUrl, setLastAudioUrl] = useState(null);
-  const [isListening, setIsListening] = useState(false); // new state
+  const [isListening, setIsListening] = useState(false);
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
+
+  // Backchannel sounds
+  const backchannelSounds = [
+    'hm_angry.wav',
+    'hm_male.wav',
+    'hm_thinking.wav',
+    'hmm_various-3.wav',
+    'hmm-various-8.wav'
+  ];
+  const backchannelTimeoutRef = useRef(null);
+
+  const playRandomBackchannel = () => {
+    const random = backchannelSounds[Math.floor(Math.random() * backchannelSounds.length)];
+    new Audio(`/sounds/${random}`).play().catch(e => console.log('Backchannel play failed:', e));
+  };
 
   useEffect(() => {
     const socket = new WebSocket(`ws://86.50.20.198:8000/ws/${userIdRef.current}`);
@@ -36,13 +51,15 @@ function App() {
           const fullAudioUrl = `http://86.50.20.198:8000${data.audio_url}`;
           console.log('Audio URL:', fullAudioUrl);
           setLastAudioUrl(fullAudioUrl);
-          // Attempt autoplay (may be blocked)
           new Audio(fullAudioUrl).play().catch(e => console.log('Autoplay failed:', e));
         }
       }
     };
 
-    return () => socket.close();
+    return () => {
+      socket.close();
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+    };
   }, []);
 
   const sendMessage = () => {
@@ -66,7 +83,6 @@ function App() {
     }
   };
 
-  // New function for voice input
   const handleVoiceInput = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -78,14 +94,25 @@ function App() {
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
+    recognition.onstart = () => {
+      setIsListening(true);
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Schedule a backchannel sound after a short pause
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+      backchannelTimeoutRef.current = setTimeout(playRandomBackchannel, 800);
+    };
+
     recognition.onresult = (event) => {
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
-
-      sendMessage();
+      sendMessage(); // Send immediately – backchannel will play after the assistant's reply starts
     };
+
     recognition.start();
   };
 
@@ -103,7 +130,6 @@ function App() {
         ))}
       </div>
       <div style={{ display: 'flex', marginTop: '10px' }}>
-        {/* Microphone button */}
         <button onClick={handleVoiceInput} disabled={!connected} style={{ marginRight: '8px', padding: '8px' }}>
           {isListening ? <MicOff /> : <Mic />}
         </button>
