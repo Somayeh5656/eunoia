@@ -16,6 +16,9 @@ function App() {
   const recognitionRef = useRef(null);
   const accumulatedTranscriptRef = useRef('');
   const isMouseDownRef = useRef(false);
+  const [recognitionError, setRecognitionError] = useState(false);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 3;
   const cafeAudioRef = useRef(null); // CAFE SOUND: reference to the audio element
 
   // --- Emotion detection (keyword based) ---
@@ -154,7 +157,7 @@ function App() {
     }
   };
 
-  // --- Push‑to‑talk: start listening on mouse down ---
+    // --- Push‑to‑talk: start listening on mouse down ---
   const startListening = (e) => {
     e.preventDefault();
     if (isListening) return;
@@ -165,6 +168,10 @@ function App() {
       return;
     }
 
+    // Reset error state and retry counter
+    setRecognitionError(false);
+    retryCountRef.current = 0;
+
     accumulatedTranscriptRef.current = '';
     isMouseDownRef.current = true;
 
@@ -173,7 +180,11 @@ function App() {
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => {
+      setIsListening(true);
+      // If we had an error before, clear it
+      setRecognitionError(false);
+    };
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
@@ -193,7 +204,15 @@ function App() {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
-      if (isMouseDownRef.current) {
+
+      // If it's a network error, show a message
+      if (event.error === 'network') {
+        setRecognitionError(true);
+      }
+
+      // If mouse is still down, attempt to restart (up to MAX_RETRIES)
+      if (isMouseDownRef.current && retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current += 1;
         setTimeout(() => {
           if (isMouseDownRef.current && recognitionRef.current) {
             try {
@@ -202,12 +221,23 @@ function App() {
               console.log('Restart failed', e);
             }
           }
-        }, 500);
+        }, 1000); // wait 1 second before retry
+      } else {
+        // Give up – stop listening and reset
+        isMouseDownRef.current = false;
+        setIsListening(false);
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.stop();
+          } catch (e) {}
+          recognitionRef.current = null;
+        }
       }
     };
 
     recognition.onend = () => {
       if (isMouseDownRef.current) {
+        // If we're still supposed to be listening, restart
         try {
           recognition.start();
         } catch (e) {
@@ -227,7 +257,6 @@ function App() {
     recognition.start();
     recognitionRef.current = recognition;
   };
-
   const stopListening = () => {
     isMouseDownRef.current = false;
     if (recognitionRef.current) {
