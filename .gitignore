@@ -4,5 +4,5 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 *.wav
-*.mp3
+
 .env
