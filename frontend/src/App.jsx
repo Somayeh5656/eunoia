@@ -11,8 +11,7 @@ function App() {
   const [pendingMessages, setPendingMessages] = useState(0); // CAFE SOUND: count of messages awaiting response
 
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
-  const lastEmotionRef = useRef('neutral');
-  const backchannelTimeoutRef = useRef(null);
+  const lastEmotionRef = useRef('neutral'); // kept for future use (wise self, breath)
   const recognitionRef = useRef(null);
   const accumulatedTranscriptRef = useRef('');
   const isMouseDownRef = useRef(false);
@@ -21,7 +20,7 @@ function App() {
   const MAX_RETRIES = 3;
   const cafeAudioRef = useRef(null); // CAFE SOUND: reference to the audio element
 
-  // --- Emotion detection (keyword based) ---
+  // --- Emotion detection (keyword based) --- kept for future features
   const detectEmotion = (text) => {
     const lower = text.toLowerCase();
     if (lower.includes('stressed') || lower.includes('overwhelmed') || lower.includes('anxious')) return 'stressed';
@@ -31,30 +30,6 @@ function App() {
     if (lower.includes('surprised') || lower.includes('wow') || lower.includes('oh')) return 'surprised';
     if (lower.includes('interesting') || lower.includes('hmm') || lower.includes('think')) return 'interested';
     return 'neutral';
-  };
-
-  // --- Map emotions to sound files ---
-  const emotionSoundMap = {
-    stressed: 'critical.wav',
-    sad: 'sad.wav',
-    happy: 'delicious.wav',
-    angry: 'angry.wav',
-    surprised: 'surprised.wav',
-    neutral: 'hm_thinking.wav',
-  };
-
-  const interestedSounds = ['interested1.wav', 'interested2.wav', 'interested3.wav', 'interested4.wav'];
-
-  const playBackchannel = () => {
-    const emotion = lastEmotionRef.current;
-    let soundFile;
-    if (emotion === 'interested') {
-      const randomIndex = Math.floor(Math.random() * interestedSounds.length);
-      soundFile = interestedSounds[randomIndex];
-    } else {
-      soundFile = emotionSoundMap[emotion] || 'neutral_uhumm.wav';
-    }
-    new Audio(`/sounds/${soundFile}`).play().catch(e => console.log('Backchannel play failed:', e));
   };
 
   // --- CAFE SOUND: start playing the ambiance loop ---
@@ -118,7 +93,6 @@ function App() {
 
     return () => {
       socket.close();
-      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
       // CAFE SOUND: cleanup audio on unmount
       if (cafeAudioRef.current) {
         cafeAudioRef.current.pause();
@@ -157,7 +131,7 @@ function App() {
     }
   };
 
-    // --- Push‑to‑talk: start listening on mouse down ---
+  // --- Push‑to‑talk: start listening on mouse down ---
   const startListening = (e) => {
     e.preventDefault();
     if (isListening) return;
@@ -182,7 +156,6 @@ function App() {
 
     recognition.onstart = () => {
       setIsListening(true);
-      // If we had an error before, clear it
       setRecognitionError(false);
     };
 
@@ -205,12 +178,10 @@ function App() {
     recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
 
-      // If it's a network error, show a message
       if (event.error === 'network') {
         setRecognitionError(true);
       }
 
-      // If mouse is still down, attempt to restart (up to MAX_RETRIES)
       if (isMouseDownRef.current && retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current += 1;
         setTimeout(() => {
@@ -221,9 +192,8 @@ function App() {
               console.log('Restart failed', e);
             }
           }
-        }, 1000); // wait 1 second before retry
+        }, 1000);
       } else {
-        // Give up – stop listening and reset
         isMouseDownRef.current = false;
         setIsListening(false);
         if (recognitionRef.current) {
@@ -237,7 +207,6 @@ function App() {
 
     recognition.onend = () => {
       if (isMouseDownRef.current) {
-        // If we're still supposed to be listening, restart
         try {
           recognition.start();
         } catch (e) {
@@ -249,14 +218,14 @@ function App() {
         if (accumulatedTranscriptRef.current.trim()) {
           sendMessage(accumulatedTranscriptRef.current);
         }
-        if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
-        backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
+        // (Backchanneling sounds removed)
       }
     };
 
     recognition.start();
     recognitionRef.current = recognition;
   };
+
   const stopListening = () => {
     isMouseDownRef.current = false;
     if (recognitionRef.current) {
