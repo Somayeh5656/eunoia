@@ -2,6 +2,8 @@ import os
 import asyncio
 from groq import Groq
 from typing import List, Dict
+from dotenv import load_dotenv
+load_dotenv()
 
 class LLMEngine:
     def __init__(self, user_id: str, model="llama3-8b-8192"):
