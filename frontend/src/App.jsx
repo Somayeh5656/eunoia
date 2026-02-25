@@ -12,6 +12,7 @@ function App() {
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
   const lastEmotionRef = useRef('neutral');
   const backchannelTimeoutRef = useRef(null);
+  const recognitionRef = useRef(null);           // hold the current recognition instance
 
   // --- Emotion detection (keyword based) ---
   const detectEmotion = (text) => {
@@ -29,48 +30,39 @@ function App() {
   const emotionSoundMap = {
     stressed: 'critical.wav',
     sad: 'sad.wav',
-    happy: 'delicious.wav',   // or you could use 'excited.wav' instead
+    happy: 'delicious.wav',
     angry: 'angry.wav',
     surprised: 'surprised.wav',
     neutral: 'neutral_uhumm.wav',
   };
 
-  // Multiple sounds for 'interested' – we'll pick one at random
   const interestedSounds = ['interested1.wav', 'interested2.wav', 'interested3.wav', 'interested4.wav'];
 
   const playBackchannel = () => {
     const emotion = lastEmotionRef.current;
     let soundFile;
-
     if (emotion === 'interested') {
       const randomIndex = Math.floor(Math.random() * interestedSounds.length);
       soundFile = interestedSounds[randomIndex];
     } else {
       soundFile = emotionSoundMap[emotion] || 'neutral_uhumm.wav';
     }
-
     new Audio(`/sounds/${soundFile}`).play().catch(e => console.log('Backchannel play failed:', e));
   };
 
-  // --- WebSocket setup ---
+  // --- WebSocket setup (unchanged) ---
   useEffect(() => {
     const socket = new WebSocket(`ws://86.50.20.198:8000/ws/${userIdRef.current}`);
-
     socket.onopen = () => {
       console.log('✅ WebSocket connected');
       setConnected(true);
       setWs(socket);
     };
-
     socket.onclose = (event) => {
       console.log('❌ WebSocket disconnected', event.code, event.reason);
       setConnected(false);
     };
-
-    socket.onerror = (err) => {
-      console.error('WebSocket error:', err);
-    };
-
+    socket.onerror = (err) => console.error('WebSocket error:', err);
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'assistant_response') {
@@ -83,14 +75,12 @@ function App() {
         }
       }
     };
-
     return () => {
       socket.close();
       if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
     };
   }, []);
 
-  // --- Send a text message ---
   const sendMessage = () => {
     if (!input.trim()) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -112,38 +102,45 @@ function App() {
     }
   };
 
-  // --- Voice input with emotion detection and backchannel ---
-  const handleVoiceInput = () => {
+  // --- Push‑to‑talk: start listening on mouse down ---
+  const startListening = (e) => {
+    e.preventDefault();   // prevent any default button behaviour
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Speech recognition not supported in this browser.');
       return;
     }
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = false;          // stops when we call .stop()
+    recognition.interimResults = false;      // we only want the final transcript
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
 
     recognition.onend = () => {
       setIsListening(false);
-      // When the user stops speaking, schedule a backchannel sound after a short pause
+      // after stopping, schedule the backchannel sound
       if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
       backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
+      recognitionRef.current = null;
     };
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
-      // Detect emotion from what the user said
       const emotion = detectEmotion(transcript);
       lastEmotionRef.current = emotion;
-      // Send the message immediately
-      sendMessage();
     };
 
     recognition.start();
+    recognitionRef.current = recognition;
+  };
+
+  // --- Stop listening on mouse up or mouse leave ---
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();    // this will trigger onend
+    }
   };
 
   return (
@@ -160,7 +157,14 @@ function App() {
         ))}
       </div>
       <div style={{ display: 'flex', marginTop: '10px' }}>
-        <button onClick={handleVoiceInput} disabled={!connected} style={{ marginRight: '8px', padding: '8px' }}>
+        {/* Push‑to‑talk button: hold to speak */}
+        <button
+          onMouseDown={startListening}
+          onMouseUp={stopListening}
+          onMouseLeave={stopListening}   // if the mouse leaves while holding, stop
+          disabled={!connected || isListening}
+          style={{ marginRight: '8px', padding: '8px' }}
+        >
           {isListening ? <MicOff /> : <Mic />}
         </button>
         <input
