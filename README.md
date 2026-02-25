@@ -151,6 +151,7 @@ You need two terminal sessions (or use `tmux`).
 From the project root (`~/eunoia`), activate the virtual environment and start the server:
 
 ```bash
+cd ~/eunoia
 source venv310/bin/activate
 python -m backend.run
 ```

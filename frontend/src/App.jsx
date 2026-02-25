@@ -83,8 +83,8 @@ function App() {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
-      // Optionally auto‑send (uncomment next line)
-      // sendMessage();
+
+      sendMessage();
     };
     recognition.start();
   };
