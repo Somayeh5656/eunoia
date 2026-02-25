@@ -155,6 +155,8 @@ cd ~/eunoia
 source venv310/bin/activate
 python -m backend.run
 ```
+ssh eunoia-vm 
+http://86.50.20.198:5173/
 
 The backend will start on `http://0.0.0.0:8000`.  
 On first run, TTS models will be downloaded automatically.
