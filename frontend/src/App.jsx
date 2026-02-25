@@ -12,7 +12,9 @@ function App() {
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
   const lastEmotionRef = useRef('neutral');
   const backchannelTimeoutRef = useRef(null);
-  const recognitionRef = useRef(null);           // hold the current recognition instance
+  const recognitionRef = useRef(null);
+  const accumulatedTranscriptRef = useRef('');        // store full transcript
+  const isMouseDownRef = useRef(false);               // track if button is pressed
 
   // --- Emotion detection (keyword based) ---
   const detectEmotion = (text) => {
@@ -81,14 +83,15 @@ function App() {
     };
   }, []);
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
+  const sendMessage = (textToSend = null) => {
+    const messageText = textToSend !== null ? textToSend : input;
+    if (!messageText.trim()) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       console.log('WebSocket not open');
       return;
     }
-    setMessages(prev => [...prev, { sender: 'user', text: input }]);
-    ws.send(JSON.stringify({ type: 'user_message', text: input }));
+    setMessages(prev => [...prev, { sender: 'user', text: messageText }]);
+    ws.send(JSON.stringify({ type: 'user_message', text: messageText }));
     setInput('');
   };
 
@@ -104,32 +107,82 @@ function App() {
 
   // --- Push‑to‑talk: start listening on mouse down ---
   const startListening = (e) => {
-    e.preventDefault();   // prevent any default button behaviour
+    e.preventDefault();
+    if (isListening) return; // already listening
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Speech recognition not supported in this browser.');
       return;
     }
+
+    accumulatedTranscriptRef.current = '';
+    isMouseDownRef.current = true;
+
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;          // stops when we call .stop()
-    recognition.interimResults = false;      // we only want the final transcript
+    recognition.continuous = true;          // keep listening until we stop
+    recognition.interimResults = true;       // we need to capture final parts
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => setIsListening(true);
-
-    recognition.onend = () => {
-      setIsListening(false);
-      // after stopping, schedule the backchannel sound
-      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
-      backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
-      recognitionRef.current = null;
+    recognition.onstart = () => {
+      setIsListening(true);
     };
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      const emotion = detectEmotion(transcript);
-      lastEmotionRef.current = emotion;
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript + ' ';
+        }
+      }
+      if (finalTranscript) {
+        accumulatedTranscriptRef.current += finalTranscript;
+        setInput(accumulatedTranscriptRef.current); // update input box in real time
+        // Optionally detect emotion from the accumulated text, but for backchannel we'll use the last full sentence? For simplicity, we'll keep the last emotion from the latest final result.
+        const emotion = detectEmotion(finalTranscript);
+        lastEmotionRef.current = emotion;
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      // if error occurs while mouse is down, we might want to restart? For now just stop.
+      if (isMouseDownRef.current) {
+        // attempt to restart after a short delay
+        setTimeout(() => {
+          if (isMouseDownRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              console.log('Restart failed', e);
+            }
+          }
+        }, 500);
+      }
+    };
+
+    recognition.onend = () => {
+      // Recognition ended (maybe because of pause, error, or we called stop())
+      if (isMouseDownRef.current) {
+        // If mouse is still down, restart recognition
+        try {
+          recognition.start();
+        } catch (e) {
+          console.log('Restart failed', e);
+        }
+      } else {
+        // Mouse released, we are done
+        setIsListening(false);
+        recognitionRef.current = null;
+        // Send the accumulated message
+        if (accumulatedTranscriptRef.current.trim()) {
+          sendMessage(accumulatedTranscriptRef.current);
+        }
+        // Schedule backchannel
+        if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+        backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
+      }
     };
 
     recognition.start();
@@ -138,8 +191,9 @@ function App() {
 
   // --- Stop listening on mouse up or mouse leave ---
   const stopListening = () => {
+    isMouseDownRef.current = false;
     if (recognitionRef.current) {
-      recognitionRef.current.stop();    // this will trigger onend
+      recognitionRef.current.stop(); // this will trigger onend
     }
   };
 
@@ -161,8 +215,8 @@ function App() {
         <button
           onMouseDown={startListening}
           onMouseUp={stopListening}
-          onMouseLeave={stopListening}   // if the mouse leaves while holding, stop
-          disabled={!connected || isListening}
+          onMouseLeave={stopListening}
+          disabled={!connected}
           style={{ marginRight: '8px', padding: '8px' }}
         >
           {isListening ? <MicOff /> : <Mic />}
