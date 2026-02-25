@@ -3,6 +3,4 @@ venv310/
 __pycache__/
 *.pyc
 frontend/node_modules/
-*.wav
-
 .env
