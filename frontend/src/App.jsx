@@ -8,13 +8,15 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [lastAudioUrl, setLastAudioUrl] = useState(null);
   const [isListening, setIsListening] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState(0); // CAFE SOUND: count of messages awaiting response
 
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
   const lastEmotionRef = useRef('neutral');
   const backchannelTimeoutRef = useRef(null);
   const recognitionRef = useRef(null);
-  const accumulatedTranscriptRef = useRef('');        // store full transcript
-  const isMouseDownRef = useRef(false);               // track if button is pressed
+  const accumulatedTranscriptRef = useRef('');
+  const isMouseDownRef = useRef(false);
+  const cafeAudioRef = useRef(null); // CAFE SOUND: reference to the audio element
 
   // --- Emotion detection (keyword based) ---
   const detectEmotion = (text) => {
@@ -52,22 +54,55 @@ function App() {
     new Audio(`/sounds/${soundFile}`).play().catch(e => console.log('Backchannel play failed:', e));
   };
 
-  // --- WebSocket setup (unchanged) ---
+  // --- CAFE SOUND: start playing the ambiance loop ---
+  const startCafeSound = () => {
+    if (!cafeAudioRef.current) {
+      const audio = new Audio('/sounds/cafe.mp3');
+      audio.loop = true;
+      audio.volume = 0.3; // gentle background volume
+      cafeAudioRef.current = audio;
+    }
+    cafeAudioRef.current.play().catch(e => console.log('Cafe sound play failed:', e));
+  };
+
+  // --- CAFE SOUND: stop and reset the ambiance ---
+  const stopCafeSound = () => {
+    if (cafeAudioRef.current) {
+      cafeAudioRef.current.pause();
+      cafeAudioRef.current.currentTime = 0;
+    }
+  };
+
+  // --- WebSocket setup ---
   useEffect(() => {
     const socket = new WebSocket(`ws://86.50.20.198:8000/ws/${userIdRef.current}`);
+
     socket.onopen = () => {
       console.log('✅ WebSocket connected');
       setConnected(true);
       setWs(socket);
     };
+
     socket.onclose = (event) => {
       console.log('❌ WebSocket disconnected', event.code, event.reason);
       setConnected(false);
+      // CAFE SOUND: stop the ambiance when connection is lost
+      setPendingMessages(0);
+      stopCafeSound();
     };
+
     socket.onerror = (err) => console.error('WebSocket error:', err);
+
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'assistant_response') {
+        // CAFE SOUND: decrement pending counter, stop cafe when all responses received
+        setPendingMessages(prev => {
+          const newCount = prev - 1;
+          if (newCount === 0) stopCafeSound();
+          return newCount;
+        });
+
         setMessages(prev => [...prev, { sender: 'assistant', text: data.text }]);
         if (data.audio_url) {
           const fullAudioUrl = `http://86.50.20.198:8000${data.audio_url}`;
@@ -77,9 +112,15 @@ function App() {
         }
       }
     };
+
     return () => {
       socket.close();
       if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+      // CAFE SOUND: cleanup audio on unmount
+      if (cafeAudioRef.current) {
+        cafeAudioRef.current.pause();
+        cafeAudioRef.current = null;
+      }
     };
   }, []);
 
@@ -90,6 +131,14 @@ function App() {
       console.log('WebSocket not open');
       return;
     }
+
+    // CAFE SOUND: increment pending counter, start cafe if this is the first pending message
+    setPendingMessages(prev => {
+      const newCount = prev + 1;
+      if (newCount === 1) startCafeSound();
+      return newCount;
+    });
+
     setMessages(prev => [...prev, { sender: 'user', text: messageText }]);
     ws.send(JSON.stringify({ type: 'user_message', text: messageText }));
     setInput('');
@@ -108,7 +157,7 @@ function App() {
   // --- Push‑to‑talk: start listening on mouse down ---
   const startListening = (e) => {
     e.preventDefault();
-    if (isListening) return; // already listening
+    if (isListening) return;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -120,13 +169,11 @@ function App() {
     isMouseDownRef.current = true;
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;          // keep listening until we stop
-    recognition.interimResults = true;       // we need to capture final parts
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
+    recognition.onstart = () => setIsListening(true);
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
@@ -138,8 +185,7 @@ function App() {
       }
       if (finalTranscript) {
         accumulatedTranscriptRef.current += finalTranscript;
-        setInput(accumulatedTranscriptRef.current); // update input box in real time
-        // Optionally detect emotion from the accumulated text, but for backchannel we'll use the last full sentence? For simplicity, we'll keep the last emotion from the latest final result.
+        setInput(accumulatedTranscriptRef.current);
         const emotion = detectEmotion(finalTranscript);
         lastEmotionRef.current = emotion;
       }
@@ -147,9 +193,7 @@ function App() {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
-      // if error occurs while mouse is down, we might want to restart? For now just stop.
       if (isMouseDownRef.current) {
-        // attempt to restart after a short delay
         setTimeout(() => {
           if (isMouseDownRef.current && recognitionRef.current) {
             try {
@@ -163,23 +207,18 @@ function App() {
     };
 
     recognition.onend = () => {
-      // Recognition ended (maybe because of pause, error, or we called stop())
       if (isMouseDownRef.current) {
-        // If mouse is still down, restart recognition
         try {
           recognition.start();
         } catch (e) {
           console.log('Restart failed', e);
         }
       } else {
-        // Mouse released, we are done
         setIsListening(false);
         recognitionRef.current = null;
-        // Send the accumulated message
         if (accumulatedTranscriptRef.current.trim()) {
           sendMessage(accumulatedTranscriptRef.current);
         }
-        // Schedule backchannel
         if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
         backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
       }
@@ -189,11 +228,10 @@ function App() {
     recognitionRef.current = recognition;
   };
 
-  // --- Stop listening on mouse up or mouse leave ---
   const stopListening = () => {
     isMouseDownRef.current = false;
     if (recognitionRef.current) {
-      recognitionRef.current.stop(); // this will trigger onend
+      recognitionRef.current.stop();
     }
   };
 
@@ -211,7 +249,6 @@ function App() {
         ))}
       </div>
       <div style={{ display: 'flex', marginTop: '10px' }}>
-        {/* Push‑to‑talk button: hold to speak */}
         <button
           onMouseDown={startListening}
           onMouseUp={stopListening}
