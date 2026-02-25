@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class LLMEngine:
-    def __init__(self, user_id: str, model="llama3-8b-8192"):
+    def __init__(self, user_id: str, model="llama-3.1-8b-instant"):
         self.user_id = user_id
         self.model = model
         # Use API key from environment variable (recommended) or hardcode for testing
