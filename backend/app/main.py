@@ -11,6 +11,8 @@ from .llm_engine import LLMEngine
 from .tts_service import TTSService
 from .connection_manager import manager
 
+from fastapi import HTTPException
+
 app = FastAPI(title="Eunoia Backend")
 
 # CORS – allow all origins for debugging
@@ -72,7 +74,15 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         print(f"Unexpected WebSocket error: {e}")
         await websocket.close()
 
+
+
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
-    file_path = os.path.join(BASE_DIR, "backend", "audio", "generated", filename)
+    # Prevent directory traversal: only the filename itself (no slashes)
+    safe_filename = os.path.basename(filename)
+    # Build the absolute path
+    file_path = os.path.join(BASE_DIR, "backend", "audio", "generated", safe_filename)
+    # Optional: ensure the file is inside the intended directory
+    if not os.path.realpath(file_path).startswith(os.path.realpath(os.path.join(BASE_DIR, "backend", "audio", "generated"))):
+        raise HTTPException(status_code=400, detail="Invalid file path")
     return FileResponse(file_path)
