@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff } from 'lucide-react';  // import icons
+import { Mic, MicOff } from 'lucide-react';
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -7,9 +7,52 @@ function App() {
   const [ws, setWs] = useState(null);
   const [connected, setConnected] = useState(false);
   const [lastAudioUrl, setLastAudioUrl] = useState(null);
-  const [isListening, setIsListening] = useState(false); // new state
-  const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
+  const [isListening, setIsListening] = useState(false);
 
+  const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
+  const lastEmotionRef = useRef('neutral');
+  const backchannelTimeoutRef = useRef(null);
+
+  // --- Emotion detection (keyword based) ---
+  const detectEmotion = (text) => {
+    const lower = text.toLowerCase();
+    if (lower.includes('stressed') || lower.includes('overwhelmed') || lower.includes('anxious')) return 'stressed';
+    if (lower.includes('sad') || lower.includes('depressed') || lower.includes('cry') || lower.includes('lonely')) return 'sad';
+    if (lower.includes('happy') || lower.includes('great') || lower.includes('wonderful') || lower.includes('excited')) return 'happy';
+    if (lower.includes('angry') || lower.includes('mad') || lower.includes('frustrated')) return 'angry';
+    if (lower.includes('surprised') || lower.includes('wow') || lower.includes('oh')) return 'surprised';
+    if (lower.includes('interesting') || lower.includes('hmm') || lower.includes('think')) return 'interested';
+    return 'neutral';
+  };
+
+  // --- Map emotions to sound files ---
+  const emotionSoundMap = {
+    stressed: 'critical.wav',
+    sad: 'sad.wav',
+    happy: 'delicious.wav',   // or you could use 'excited.wav' instead
+    angry: 'angry.wav',
+    surprised: 'surprised.wav',
+    neutral: 'neutral_uhumm.wav',
+  };
+
+  // Multiple sounds for 'interested' – we'll pick one at random
+  const interestedSounds = ['interested1.wav', 'interested2.wav', 'interested3.wav', 'interested4.wav'];
+
+  const playBackchannel = () => {
+    const emotion = lastEmotionRef.current;
+    let soundFile;
+
+    if (emotion === 'interested') {
+      const randomIndex = Math.floor(Math.random() * interestedSounds.length);
+      soundFile = interestedSounds[randomIndex];
+    } else {
+      soundFile = emotionSoundMap[emotion] || 'neutral_uhumm.wav';
+    }
+
+    new Audio(`/sounds/${soundFile}`).play().catch(e => console.log('Backchannel play failed:', e));
+  };
+
+  // --- WebSocket setup ---
   useEffect(() => {
     const socket = new WebSocket(`ws://86.50.20.198:8000/ws/${userIdRef.current}`);
 
@@ -36,15 +79,18 @@ function App() {
           const fullAudioUrl = `http://86.50.20.198:8000${data.audio_url}`;
           console.log('Audio URL:', fullAudioUrl);
           setLastAudioUrl(fullAudioUrl);
-          // Attempt autoplay (may be blocked)
           new Audio(fullAudioUrl).play().catch(e => console.log('Autoplay failed:', e));
         }
       }
     };
 
-    return () => socket.close();
+    return () => {
+      socket.close();
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+    };
   }, []);
 
+  // --- Send a text message ---
   const sendMessage = () => {
     if (!input.trim()) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -66,7 +112,7 @@ function App() {
     }
   };
 
-  // New function for voice input
+  // --- Voice input with emotion detection and backchannel ---
   const handleVoiceInput = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -79,13 +125,24 @@ function App() {
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // When the user stops speaking, schedule a backchannel sound after a short pause
+      if (backchannelTimeoutRef.current) clearTimeout(backchannelTimeoutRef.current);
+      backchannelTimeoutRef.current = setTimeout(playBackchannel, 800);
+    };
+
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
-
+      // Detect emotion from what the user said
+      const emotion = detectEmotion(transcript);
+      lastEmotionRef.current = emotion;
+      // Send the message immediately
       sendMessage();
     };
+
     recognition.start();
   };
 
@@ -103,7 +160,6 @@ function App() {
         ))}
       </div>
       <div style={{ display: 'flex', marginTop: '10px' }}>
-        {/* Microphone button */}
         <button onClick={handleVoiceInput} disabled={!connected} style={{ marginRight: '8px', padding: '8px' }}>
           {isListening ? <MicOff /> : <Mic />}
         </button>
