@@ -15,16 +15,12 @@ class EmotiVoiceClient:
 
         # Map your emotion names to EmotiVoice prompt strings
         self.emotion_prompts = {
-            'neutral': 'natural, steady conversation',
-            'happy': 'extremely joyful, laughing, high-pitched, cheering', # Added intensity
-            'sad': 'crying, devastated, sobbing, very slow whispering',   # Added physical cues
-            'angry': 'screaming, furious, aggressive, shouting loudly',   # Added volume cues
-            'stressed': 'panicked, hyperventilating, terrified, shaking voice',
-            'calm': 'meditative, very peaceful, gentle breathy whisper',
-            'surprised': 'gasping, shocked, stunned, wide-eyed amazement',
-            'fearful': 'shaking with terror, whimpering, petrified',
-        }
-
+    'neutral': 'natural speech, conversational',
+    'happy': 'very joyful, high pitch, energetic',
+    'sad': 'depressed, slow, low energy, whispering, crying, sad',
+    'angry': 'shouting, aggressive, fast',
+    'stressed': 'nervous, stuttering, fast breathing',
+    }
 
 
         # You can obtain a list of available voices from the web UI or API
