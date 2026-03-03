@@ -57,7 +57,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     audio_url = None
                 else:
                     try:
-                        audio_file = tts.synthesize(reply)
+                        audio_file = tts.synthesize(reply, emotion)
                         audio_url = f"/audio/{os.path.basename(audio_file)}"
                     except Exception as e:
                         print(f"TTS error: {e}")
