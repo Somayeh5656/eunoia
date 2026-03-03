@@ -1,68 +1,73 @@
 import os
 import uuid
 from TTS.api import TTS
+import numpy as np
+from scipy.io import wavfile
+import soundfile as sf
+import librosa
 
 class TTSService:
-    def __init__(self, model_name="tts_models/multilingual/multi-dataset/xtts_v2"):
+    def __init__(self, model_name="tts_models/en/ljspeech/tacotron2-DDC"):
         """
-        Initialise the TTS service with the XTTS model for emotion-aware speech.
+        Initialise the TTS service with Tacotron2 (faster) and simulate emotion
+        by adjusting speed and pitch.
         """
         self.tts = TTS(model_name)
         # Directories – computed relative to this file's location
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # ~/eunoia
         self.output_dir = os.path.join(base_dir, "backend", "audio", "generated")
-        self.reference_dir = os.path.join(base_dir, "backend", "audio", "reference")
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Map emotions to reference filenames (from RAVDESS)
-        self.emotion_to_file = {
-            'neutral': 'neutral.wav',
-            'happy': 'happy.wav',
-            'sad': 'sad.wav',
-            'angry': 'angry.wav',
-            'calm': 'calm.wav',          # optional
-            'fearful': 'fearful.wav',     # optional
-            'stressed': 'fearful.wav',    # fallback – use fearful for stressed
+        # Emotion to speed/pitch mapping
+        # speed > 1.0 = faster, < 1.0 = slower
+        # pitch_shift in semitones (positive = higher, negative = lower)
+        self.emotion_params = {
+            'neutral': {'speed': 1.0, 'pitch_shift': 0},
+            'happy': {'speed': 1.15, 'pitch_shift': 2},      # faster, higher pitch
+            'sad': {'speed': 0.85, 'pitch_shift': -2},       # slower, lower pitch
+            'angry': {'speed': 1.2, 'pitch_shift': 1},        # faster, slightly higher
+            'stressed': {'speed': 1.1, 'pitch_shift': 1},     # slightly faster, higher
+            'calm': {'speed': 0.9, 'pitch_shift': -1},        # slower, slightly lower
+            'fearful': {'speed': 1.1, 'pitch_shift': 2},      # faster, higher
+            'surprised': {'speed': 1.2, 'pitch_shift': 3},    # fast, high pitch
+            'interested': {'speed': 1.05, 'pitch_shift': 1},  # slightly faster
         }
-
-        # Verify that at least the neutral reference exists
-        neutral_path = os.path.join(self.reference_dir, self.emotion_to_file['neutral'])
-        if not os.path.exists(neutral_path):
-            raise FileNotFoundError(
-                f"Neutral reference file not found at {neutral_path}. "
-                "Please place a neutral reference file in the reference directory."
-            )
 
     def synthesize(self, text: str, emotion: str = "neutral") -> str:
         """
-        Generate speech with emotional prosody by transferring style from a reference audio file.
-
-        Args:
-            text: The text to be spoken.
-            emotion: Detected emotion (e.g., 'happy', 'sad', 'stressed').
-
-        Returns:
-            Path to the generated audio file.
+        Generate speech with Tacotron2, then modify speed and pitch based on emotion.
         """
-        # Determine reference file for the given emotion, fallback to neutral if missing
-        ref_file = self.emotion_to_file.get(emotion, self.emotion_to_file['neutral'])
-        ref_path = os.path.join(self.reference_dir, ref_file)
+        # Get emotion parameters (default to neutral if emotion not found)
+        params = self.emotion_params.get(emotion, self.emotion_params['neutral'])
+        speed = params['speed']
+        pitch_shift = params['pitch_shift']
 
-        # If the specific emotion reference doesn't exist, fall back to neutral
-        if not os.path.exists(ref_path):
-            print(f"Warning: reference file for '{emotion}' not found at {ref_path}. Using neutral.")
-            ref_path = os.path.join(self.reference_dir, self.emotion_to_file['neutral'])
+        # Generate neutral audio with Tacotron2
+        temp_file = os.path.join(self.output_dir, f"temp_{uuid.uuid4()}.wav")
+        self.tts.tts_to_file(text=text, file_path=temp_file)
 
-        # Generate a unique filename
-        filename = f"{uuid.uuid4()}.wav"
-        filepath = os.path.join(self.output_dir, filename)
+        # If no modification needed, just rename and return
+        if speed == 1.0 and pitch_shift == 0:
+            final_file = os.path.join(self.output_dir, f"{uuid.uuid4()}.wav")
+            os.rename(temp_file, final_file)
+            return final_file
 
-        # Synthesise with XTTS – transfer style from reference
-        self.tts.tts_to_file(
-            text=text,
-            speaker_wav=ref_path,   # transfer style from this recording
-            language="en",
-            file_path=filepath
-        )
+        # Load audio with librosa
+        y, sr = librosa.load(temp_file, sr=None)
 
-        return filepath
+        # 1. Adjust speed (time stretching)
+        if speed != 1.0:
+            y = librosa.effects.time_stretch(y, rate=speed)
+
+        # 2. Adjust pitch
+        if pitch_shift != 0:
+            y = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch_shift)
+
+        # Save modified audio
+        final_file = os.path.join(self.output_dir, f"{uuid.uuid4()}.wav")
+        sf.write(final_file, y, sr)
+
+        # Clean up temp file
+        os.remove(temp_file)
+
+        return final_file
