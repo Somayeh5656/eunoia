@@ -1,68 +1,72 @@
 import os
 import uuid
-from TTS.api import TTS
+from .emotivoice_client import EmotiVoiceClient
 
 class TTSService:
-    def __init__(self, model_name="tts_models/multilingual/multi-dataset/xtts_v2"):
+    def __init__(self, api_url="http://localhost:8080"):
         """
-        Initialise the TTS service with the XTTS model.
+        Initialize EmotiVoice TTS service.
         """
-        self.tts = TTS(model_name)
-        # Directories – computed relative to this file's location
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # ~/eunoia
-        self.output_dir = os.path.join(base_dir, "backend", "audio", "generated")
-        self.reference_dir = os.path.join(base_dir, "backend", "audio", "reference")
+        self.client = EmotiVoiceClient(api_url)
+        self.output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "backend", "audio", "generated"
+        )
         os.makedirs(self.output_dir, exist_ok=True)
-
-        # Map emotions to reference filenames (you can change these to your actual file names)
-        self.emotion_to_file = {
-            'neutral': 'neutral.wav',
-            'happy': 'happy.wav',
-            'sad': 'sad.wav',
-            'angry': 'angry.wav',
-            'calm': 'calm.wav',          # optional
-            'fearful': 'fearful.wav',     # optional
-            'stressed': 'fearful.wav',    # fallback – use fearful for stressed
+        
+        # Map your emotion detection to EmotiVoice emotions
+        self.emotion_map = {
+            'neutral': 'neutral',
+            'happy': 'happy',
+            'sad': 'sad',
+            'angry': 'angry',
+            'stressed': 'fearful',  # or 'angry' depending on context
+            'surprised': 'surprised',
+            'fearful': 'fearful',
+            'calm': 'neutral',       # calm falls back to neutral
         }
-
-        # Verify that at least the neutral reference exists
-        neutral_path = os.path.join(self.reference_dir, self.emotion_to_file['neutral'])
-        if not os.path.exists(neutral_path):
-            raise FileNotFoundError(
-                f"Neutral reference file not found at {neutral_path}. "
-                "Please place a neutral reference file in the reference directory."
-            )
-
+        
+        # Choose a speaker voice (F7 is very expressive)
+        self.default_speaker = "F7"
+    
     def synthesize(self, text: str, emotion: str = "neutral") -> str:
         """
-        Generate speech with emotional prosody by transferring style from a reference audio file.
-
+        Generate speech using EmotiVoice with emotional control.
+        
         Args:
-            text: The text to be spoken.
-            emotion: Detected emotion (e.g., 'happy', 'sad', 'stressed').
-
+            text: Text to synthesize
+            emotion: Detected emotion from your app
+        
         Returns:
-            Path to the generated audio file.
+            Path to generated audio file
         """
-        # Determine reference file for the given emotion, fallback to neutral if missing
-        ref_file = self.emotion_to_file.get(emotion, self.emotion_to_file['neutral'])
-        ref_path = os.path.join(self.reference_dir, ref_file)
-
-        # If the specific emotion reference doesn't exist, fall back to neutral
-        if not os.path.exists(ref_path):
-            print(f"Warning: reference file for '{emotion}' not found at {ref_path}. Using neutral.")
-            ref_path = os.path.join(self.reference_dir, self.emotion_to_file['neutral'])
-
-        # Generate a unique filename
+        # Map emotion to EmotiVoice's emotion labels
+        emotivoice_emotion = self.emotion_map.get(emotion, 'neutral')
+        
+        # Generate audio
+        audio_data = self.client.synthesize(
+            text=text,
+            speaker=self.default_speaker,
+            emotion=emotivoice_emotion,
+            speed=1.0
+        )
+        
+        if audio_data is None:
+            # Fallback: use neutral if emotion synthesis fails
+            audio_data = self.client.synthesize(
+                text=text,
+                speaker=self.default_speaker,
+                emotion='neutral'
+            )
+        
+        if audio_data is None:
+            raise RuntimeError("EmotiVoice synthesis failed")
+        
+        # Save to file
         filename = f"{uuid.uuid4()}.wav"
         filepath = os.path.join(self.output_dir, filename)
-
-        # Synthesise with XTTS – the magic happens here
-        self.tts.tts_to_file(
-            text=text,
-            speaker_wav=ref_path,   # transfer style from this recording
-            language="en",
-            file_path=filepath
-        )
-
+        
+        with open(filepath, 'wb') as f:
+            f.write(audio_data)
+        
         return filepath
