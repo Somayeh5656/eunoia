@@ -5,7 +5,7 @@ from TTS.api import TTS
 class TTSService:
     def __init__(self, model_name="tts_models/multilingual/multi-dataset/xtts_v2"):
         """
-        Initialise the TTS service with the XTTS model.
+        Initialise the TTS service with the XTTS model for emotion-aware speech.
         """
         self.tts = TTS(model_name)
         # Directories – computed relative to this file's location
@@ -14,7 +14,7 @@ class TTSService:
         self.reference_dir = os.path.join(base_dir, "backend", "audio", "reference")
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Map emotions to reference filenames (you can change these to your actual file names)
+        # Map emotions to reference filenames (from RAVDESS)
         self.emotion_to_file = {
             'neutral': 'neutral.wav',
             'happy': 'happy.wav',
@@ -57,7 +57,7 @@ class TTSService:
         filename = f"{uuid.uuid4()}.wav"
         filepath = os.path.join(self.output_dir, filename)
 
-        # Synthesise with XTTS – the magic happens here
+        # Synthesise with XTTS – transfer style from reference
         self.tts.tts_to_file(
             text=text,
             speaker_wav=ref_path,   # transfer style from this recording
