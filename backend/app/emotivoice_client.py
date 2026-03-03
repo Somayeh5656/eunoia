@@ -42,7 +42,7 @@ class EmotiVoiceClient:
             "input": text,
             "voice": voice,
             "prompt": prompt,
-            "speed": 1.2
+            "speed": 1.1
         }
 
         try:
