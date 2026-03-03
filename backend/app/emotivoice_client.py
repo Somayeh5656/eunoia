@@ -16,8 +16,8 @@ class EmotiVoiceClient:
         # Map your emotion names to EmotiVoice prompt strings
         self.emotion_prompts = {
     'neutral': 'natural speech, conversational',
-    'happy': 'very joyful, high pitch, energetic',
-    'sad': 'depressed, slow, low energy, whispering',
+    'happy': 'very very joyful, high pitch, energetic',
+    'sad': 'depressed, slow, low energy, whispering, crying, sad',
     'angry': 'shouting, aggressive, fast',
     'stressed': 'nervous, stuttering, fast breathing',
     }
