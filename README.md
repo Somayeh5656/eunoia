@@ -253,3 +253,9 @@ Detach with `Ctrl+B, D`, reattach later with `tmux attach -t <session>`.
 
 For more detailed instructions on each feature, refer to the project documentation or the conversation history with your team.
 ```
+
+git add .
+git commit -m "gd"
+git push
+
+git pull
