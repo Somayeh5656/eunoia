@@ -4,3 +4,10 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 .env
+*.wav
+backend/audio/Audio_Speech_Actors_01-24.zip
+backend/audio/ravdess_speech/
+backend/audio/reference/
+backend/audio/generated/
+test.wav
+test_emotion.wav
