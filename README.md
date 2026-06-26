@@ -96,21 +96,7 @@ source venv310/bin/activate
 
 ```bash
 pip install --upgrade pip setuptools wheel
-
-pip install git+https://github.com/myshell-ai/OpenVoice.git
-
-pip install \
-fastapi \
-uvicorn \
-websockets \
-TTS \
-librosa \
-scikit-learn \
-transformers \
-apscheduler \
-python-dotenv \
-requests \
-groq
+pip install -r requirements.txt
 ```
 
 The project uses **Groq** for LLM inference. Ollama is no longer required.
